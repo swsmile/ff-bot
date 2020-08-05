@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 import time
-
+import logging
 import requests
 import json
 import datetime
@@ -8,7 +8,7 @@ import datetime
 import threading
 from enum import Enum, unique
 
-INIT_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOlwvXC9hcGktbW9iaWxlLmNpcmN1aXRocS5jb21cL2FwaVwvdjFcL2F1dGhcL3Rva2VuXC9yZWZyZXNoIiwiaWF0IjoxNTk2MzgwNTMzLCJleHAiOjE1OTc2NzY0MDksIm5iZiI6MTU5NjQ2NjgwOSwianRpIjoiRjJkODVEeE9wVVpIa2xFSyIsInN1YiI6OTAxNzYsInBydiI6IjIzYmQ1Yzg5NDlmNjAwYWRiMzllNzAxYzQwMDg3MmRiN2E1OTc2ZjcifQ.rCY0LjpfwQiDCkT7CpzvjVabza_BasiTkx-P-qrVj9U"
+INIT_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOlwvXC9hcGktbW9iaWxlLmNpcmN1aXRocS5jb21cL2FwaVwvdjFcL2F1dGhcL3Rva2VuXC9yZWZyZXNoIiwiaWF0IjoxNTk2MzgwNTMzLCJleHAiOjE1OTc4NDE4MzIsIm5iZiI6MTU5NjYzMjIzMiwianRpIjoiMENHbG81dmhTVkhUQjlRbSIsInN1YiI6OTAxNzYsInBydiI6IjIzYmQ1Yzg5NDlmNjAwYWRiMzllNzAxYzQwMDg3MmRiN2E1OTc2ZjcifQ.PqktIiMocQQvUKDArDLweIfyfw_rFCOKRej-wfncfiI"
 MY_TOKEN = INIT_TOKEN
 WANT_REFRESH_TOKEN = True
 FREQUENCY_TO_CHECK_CLASS_AVAILABILITY = 1  # 1 second
@@ -29,6 +29,7 @@ class GymClass:
 	start_time = datetime.datetime.now()
 	end_time = datetime.datetime.now()
 	club = ClubEnum.Clementi
+	capacity = 0
 
 	def __str__(self):
 		return "GymClass - name: {}, class_id: {}, start_time: {}, end_time: {}, club: {}".format(self.name,
@@ -36,6 +37,23 @@ class GymClass:
 																								  self.start_time,
 																								  self.end_time,
 																								  self.club)
+
+
+def send_http_post(url):
+	headers = {
+		'Host': 'api-mobile.circuithq.com',
+		'content-type': 'application/json',
+		'accept': '*/*',
+		'authorization': 'Bearer ' + MY_TOKEN,
+		'user-country-code': 'sg',
+		'accept-language': 'en-CN;q=1.0, zh-Hans-CN;q=0.9',
+		'user-locale': 'cn',
+		'user-agent': 'Fitness First Asia/1.10 (com.EvolutionWellness.App.FitnessFirst; build:66; iOS 13.6.0) Alamofire/4.8.2',
+		'user-brand-code': 'ff',
+	}
+	response = requests.post(url, headers=headers,
+							 verify=False)
+	return response
 
 
 def find_date_list_needing_to_book():
@@ -66,20 +84,8 @@ def refresh_token():
 	if not WANT_REFRESH_TOKEN:
 		# TOKEN = INIT_TOKEN
 		return True
-	headers = {
-		'Host': 'api-mobile.circuithq.com',
-		'content-type': 'application/json',
-		'accept': '*/*',
-		'authorization': 'Bearer ' + MY_TOKEN,
-		'user-country-code': 'sg',
-		'accept-language': 'en-CN;q=1.0, zh-Hans-CN;q=0.9',
-		'user-locale': 'cn',
-		'user-agent': 'Fitness First Asia/1.10 (com.EvolutionWellness.App.FitnessFirst; build:66; iOS 13.6.0) Alamofire/4.8.2',
-		'user-brand-code': 'ff',
-	}
 
-	response = requests.post('https://api-mobile.circuithq.com/api/v1/auth/token/refresh', headers=headers,
-							 verify=False)
+	response = send_http_post('https://api-mobile.circuithq.com/api/v1/auth/token/refresh')
 	if response.status_code == 401:
 		print("invali token provided: ", MY_TOKEN)
 		print("error msg: ", response.text)
@@ -137,9 +143,11 @@ def parse_classes(classes_dict):
 			gym_class = GymClass()
 			gym_class.class_id = class_id
 			gym_class.name = class_name
-			gym_class.start_time = time.localtime(int(timeStart))
-			gym_class.end_time = time.localtime(int(timeEnd))
+
+			gym_class.start_time = datetime.datetime.fromtimestamp(int(timeStart))
+			gym_class.end_time = datetime.datetime.fromtimestamp(int(timeEnd))
 			gym_class.club = get_club_enum_by_club_id(club_id)
+			gym_class.capacity = capacity
 
 			class_to_book.append(gym_class)
 
@@ -156,7 +164,7 @@ def book_class(c):
 	# 	'ARRAffinity': '94172f5487d231c2d0c7ffe567b886259eb44ddbfd8f88adc109ab9b026ea441',
 	# }
 	cookies = {}
-
+	response = send_http_post('https://api-mobile.circuithq.com/api/v1/auth/token/refresh')
 	headers = {
 		'Host': 'api-mobile.circuithq.com',
 		'content-type': 'application/json',
@@ -188,25 +196,31 @@ def book_class(c):
 				msg = response_data["error"]["messages"][0]["message"]
 
 				if msg == "booking_errors_too_late":
-					print("we are too late to book (class_id: " + str(c.class_id) + ", start_time: " + time.strftime(
-						"%Y-%m-%d %H:%M:%S", c.start_time) + ", name: " + c.name + " ), so give up")
+					# logging.info(
+					# 	"we are too late to book or we have booked it, so give up, class_id: %s, start_time: %s, name: %s",
+					# 	c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
 					return False
 				elif msg == "booking_errors_fully_booked":
-					print("try to book (class_id: " + str(c.class_id) + ", start_time: " + time.strftime(
-						"%Y-%m-%d %H:%M:%S",
-						c.start_time) + ", name: " + c.name + " ), but fail due to full capacity...")
+					logging.info(
+						"[retry] try to book (class_id: %s), but fail due to full capacity...|start_time: %s, name: %s",
+						c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
 					time.sleep(FREQUENCY_TO_BOOK)
 					continue
 				elif msg == "booking_errors_too_soon":
-					print("try to book (class_id: " + str(c.class_id) + ", start_time: " + time.strftime(
-						"%Y-%m-%d %H:%M:%S",
-						c.start_time) + ", name: " + c.name + " ), but fail due to full capacity...")
+					logging.info(
+						"[retry] try to book (class_id: %s), but fail due to be too early...|start_time: %s, name: %s",
+						c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
+
+					# TODO
 					time.sleep(FREQUENCY_TO_BOOK)
 					continue
+				elif msg == "booking_errors_overlap":
+					# logging.info(
+					# 	"booked already...|class_id: %s, start_time: %s, name: %s",
+					# 	c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
+					return False
 
-		# Unknown error
-		print(response.status_code)
-		print(response.text)
+		logging.warning("Unknown error|status_code: %s, response: %s", response.status_code, response.text)
 		return False
 
 
@@ -253,13 +267,13 @@ def get_booked_classes():
 		c.end_time = datetime.datetime.fromtimestamp(int(c_dict["timeStart"]))
 		c.club = get_club_enum_by_club_id(c_dict["club"]["clubId"])
 		booked_classes.append(c)
-		print("booked_class: ", str(c))
+		logging.info("booked_class: %s", c)
 
 	return booked_classes
 
 
 # Return class_ids_to_book
-def query_class_for_a_day(date_to_book):
+def query_class_for_a_day(date_for_query):
 	headers = {
 		'Host': 'api-mobile.circuithq.com',
 		'accept': '*/*',
@@ -272,13 +286,13 @@ def query_class_for_a_day(date_to_book):
 		'user-country-code': 'sg',
 	}
 
-	start_time_to_book = date_to_book
-	start_time_to_book = date_to_book.replace(hour=20)
-	start_time_to_book = start_time_to_book.replace(minute=1)
+	start_time_for_book_query = date_for_query
+	start_time_for_book_query = date_for_query.replace(hour=20)
+	start_time_for_book_query = start_time_for_book_query.replace(minute=1)
 
-	end_time_to_book = date_to_book
-	end_time_to_book = date_to_book.replace(hour=22)
-	end_time_to_book = end_time_to_book.replace(minute=30)
+	end_time_for_book_query = date_for_query
+	end_time_for_book_query = date_for_query.replace(hour=22)
+	end_time_for_book_query = end_time_for_book_query.replace(minute=30)
 	params = (
 		('pageSize', '1000'),
 
@@ -287,12 +301,14 @@ def query_class_for_a_day(date_to_book):
 		('pageNumber', '1'),
 		('minPrice', '0.0'),
 		# SG time
-		('fromDate', str(int(start_time_to_book.timestamp()))),
+		('fromDate', str(int(start_time_for_book_query.timestamp()))),
 		# SG time
-		('toDate', str(int(end_time_to_book.timestamp()))),
+		('toDate', str(int(end_time_for_book_query.timestamp()))),
 	)
 
-	print("start_time: " + time.asctime(time.localtime(time.time())))
+	logging.info("got class info already, start_time_for_book_query: %s, end_time_for_book_query: %s, club: %s",
+				 start_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'),
+				 end_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'), ClubEnum.Clementi)
 
 	while True:
 		response = requests.get('https://api-mobile.circuithq.com/api/v2/class/search/', headers=headers, params=params,
@@ -305,12 +321,10 @@ def query_class_for_a_day(date_to_book):
 				continue
 
 		if response.status_code == 200 and len(data["data"]) > 1:
-			print("got class info")
 			classes_dict = data["data"]
 			return parse_classes(classes_dict)
 		# time.sleep(FREQUENCY_TO_CHECK_CLASS_AVAILABILITY)
 
-		print(time.asctime(time.localtime(time.time())))
 		# Cannot continue, because of unknown error
 		print(response.status_code)
 		print(response.text)
@@ -331,15 +345,16 @@ def book_classes(classes_to_book):
 		t.start()
 
 
-refresh_token()
-
-# date_needed_to_book_list = find_date_list_needing_to_book()
-# classes_to_book = find_classes_to_book(date_needed_to_book_list)
-# book_classes(classes_to_book)
-
-# "name": "Gym Floor.." 或者 "Personal Training",
-# ["club"]["name"]
+def init():
+	logging.basicConfig(format='%(asctime)s|%(levelname)s|%(filename)s %(funcName)s %(lineno)s|%(message)s',
+						level=logging.INFO)
 
 
-# clubWebsiteName (["club"]["clubId"]) 标示场地
-# e.g. 321 Clementi
+def start():
+	date_needed_to_book_list = find_date_list_needing_to_book()
+	classes_to_book = find_classes_to_book(date_needed_to_book_list)
+	book_classes(classes_to_book)
+
+
+init()
+start()
