@@ -8,12 +8,23 @@ import datetime
 import threading
 from enum import Enum, unique
 
-INIT_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOlwvXC9hcGktbW9iaWxlLmNpcmN1aXRocS5jb21cL2FwaVwvdjFcL2F1dGhcL3Rva2VuXC9yZWZyZXNoIiwiaWF0IjoxNTk2MzgwNTMzLCJleHAiOjE1OTc4NDE4MzIsIm5iZiI6MTU5NjYzMjIzMiwianRpIjoiMENHbG81dmhTVkhUQjlRbSIsInN1YiI6OTAxNzYsInBydiI6IjIzYmQ1Yzg5NDlmNjAwYWRiMzllNzAxYzQwMDg3MmRiN2E1OTc2ZjcifQ.PqktIiMocQQvUKDArDLweIfyfw_rFCOKRej-wfncfiI"
+INIT_TOKEN = "asdsd"
 MY_TOKEN = INIT_TOKEN
-WANT_REFRESH_TOKEN = True
+WANT_REFRESH_TOKEN = False
 FREQUENCY_TO_CHECK_CLASS_AVAILABILITY = 1  # 1 second
 FREQUENCY_TO_BOOK = 0.3  # 1 second
 
+HEADERS = {
+	'Host': 'api-mobile.circuithq.com',
+	'content-type': 'application/json',
+	'accept': '*/*',
+	'authorization': 'Bearer ' + MY_TOKEN,
+	'user-country-code': 'sg',
+	'accept-language': 'en-CN;q=1.0, zh-Hans-CN;q=0.9',
+	'user-locale': 'cn',
+	'user-agent': 'Fitness First Asia/1.10 (com.EvolutionWellness.App.FitnessFirst; build:66; iOS 13.6.0) Alamofire/4.8.2',
+	'user-brand-code': 'ff',
+}
 # Disable SSL warnings
 requests.packages.urllib3.disable_warnings()
 
@@ -39,24 +50,18 @@ class GymClass:
 																								  self.club)
 
 
-def send_http_post(url):
-	headers = {
-		'Host': 'api-mobile.circuithq.com',
-		'content-type': 'application/json',
-		'accept': '*/*',
-		'authorization': 'Bearer ' + MY_TOKEN,
-		'user-country-code': 'sg',
-		'accept-language': 'en-CN;q=1.0, zh-Hans-CN;q=0.9',
-		'user-locale': 'cn',
-		'user-agent': 'Fitness First Asia/1.10 (com.EvolutionWellness.App.FitnessFirst; build:66; iOS 13.6.0) Alamofire/4.8.2',
-		'user-brand-code': 'ff',
-	}
-	response = requests.post(url, headers=headers,
-							 verify=False)
+def send_http_get(url, params):
+	response = requests.get(url, headers=HEADERS, params=params,
+							verify=False)
 	return response
 
 
-def find_date_list_needing_to_book():
+def send_http_post(url, cookies=None, data=None):
+	response = requests.post(url, headers=HEADERS, cookies=cookies, data=data, verify=False)
+	return response
+
+
+def find_date_list():
 	date_needed_to_book_list = []
 	booked_classes = get_booked_classes()
 	now = datetime.datetime.now()
@@ -80,15 +85,19 @@ def find_date_list_needing_to_book():
 	return date_needed_to_book_list
 
 
+def fail_due_to_invalid_token(code):
+	fail = code == 401
+	return fail
+
+
 def refresh_token():
 	if not WANT_REFRESH_TOKEN:
 		# TOKEN = INIT_TOKEN
 		return True
 
 	response = send_http_post('https://api-mobile.circuithq.com/api/v1/auth/token/refresh')
-	if response.status_code == 401:
-		print("invali token provided: ", MY_TOKEN)
-		print("error msg: ", response.text)
+	if fail_due_to_invalid_token(response.status_code):
+		logging.error("invali token provided|current token: %s", MY_TOKEN)
 		return False
 
 	# Unknown error
@@ -164,24 +173,11 @@ def book_class(c):
 	# 	'ARRAffinity': '94172f5487d231c2d0c7ffe567b886259eb44ddbfd8f88adc109ab9b026ea441',
 	# }
 	cookies = {}
-	response = send_http_post('https://api-mobile.circuithq.com/api/v1/auth/token/refresh')
-	headers = {
-		'Host': 'api-mobile.circuithq.com',
-		'content-type': 'application/json',
-		'accept': '*/*',
-		'user-country-code': 'sg',
-		'user-locale': 'cn',
-		'accept-language': 'en-CN;q=1.0',
-		'user-agent': 'Fitness First Asia/1.10 (com.EvolutionWellness.App.FitnessFirst; build:66; iOS 13.3.0) Alamofire/4.8.2',
-		'user-brand-code': 'ff',
-		'authorization': 'Bearer ' + MY_TOKEN,
-	}
-
 	data = '{"class_id": ' + str(c.class_id) + '}'
 
 	while True:
-		response = requests.post('https://api-mobile.circuithq.com/api/v2/class/book', headers=headers, cookies=cookies,
-								 data=data, verify=False)
+		response = send_http_post('https://api-mobile.circuithq.com/api/v2/class/book', cookies=cookies,
+								  data=data)
 		response_data = json.loads(response.text)
 		if response.status_code == 200:
 			print("we make it")
@@ -226,28 +222,14 @@ def book_class(c):
 
 def get_booked_classes():
 	booked_classes = []
-	headers = {
-		'Host': 'api-mobile.circuithq.com',
-		'accept': '*/*',
-		'content-type': 'application/json',
-		'user-locale': 'cn',
-		'authorization': 'Bearer ' + MY_TOKEN,
-		'user-brand-code': 'ff',
-		'user-agent': 'Fitness First Asia/1.12 (com.EvolutionWellness.App.FitnessFirst; build:68; iOS 13.6.0) Alamofire/4.8.2',
-		'accept-language': 'en-CN;q=1.0',
-		'user-country-code': 'sg',
-	}
 
 	params = (
 		('page', '1'),
 		('pageSize', '25'),
 	)
-
-	response = requests.get('https://api-mobile.circuithq.com/api/v2/booking/upcoming', headers=headers, params=params,
-							verify=False)
-	if response.status_code == 401:
-		print("invalid initialized token provided: ", MY_TOKEN)
-		print("error msg: ", response.text)
+	response = send_http_get('https://api-mobile.circuithq.com/api/v2/booking/upcoming', params)
+	if fail_due_to_invalid_token(response.status_code):
+		logging.error("invali token provided|current token: %s", MY_TOKEN)
 		return booked_classes
 
 	# Unknown error
@@ -274,18 +256,6 @@ def get_booked_classes():
 
 # Return class_ids_to_book
 def query_class_for_a_day(date_for_query):
-	headers = {
-		'Host': 'api-mobile.circuithq.com',
-		'accept': '*/*',
-		'content-type': 'application/json',
-		'user-locale': 'cn',
-		'authorization': 'Bearer ' + INIT_TOKEN,
-		'accept-language': 'en-CN;q=1.0, zh-Hans-CN;q=0.9',
-		'user-brand-code': 'ff',
-		'user-agent': 'Fitness First Asia/1.10 (com.EvolutionWellness.App.FitnessFirst; build:66; iOS 13.6.0) Alamofire/4.8.2',
-		'user-country-code': 'sg',
-	}
-
 	start_time_for_book_query = date_for_query
 	start_time_for_book_query = date_for_query.replace(hour=20)
 	start_time_for_book_query = start_time_for_book_query.replace(minute=1)
@@ -311,11 +281,11 @@ def query_class_for_a_day(date_for_query):
 				 end_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'), ClubEnum.Clementi)
 
 	while True:
-		response = requests.get('https://api-mobile.circuithq.com/api/v2/class/search/', headers=headers, params=params,
-								verify=False)
+		response = send_http_get('https://api-mobile.circuithq.com/api/v2/class/search/', params)
 		data = json.loads(response.text)
 
-		if response.status_code == 401:  # We need to refresh token
+		if fail_due_to_invalid_token(response.status_code):  # We need to refresh token
+			logging.error("invali token provided|current token: %s", MY_TOKEN)
 			#  {"error":{"code":10,"messages":[{"message":"errors_token_blacklisted"}]}}
 			if refresh_token():
 				continue
@@ -351,7 +321,7 @@ def init():
 
 
 def start():
-	date_needed_to_book_list = find_date_list_needing_to_book()
+	date_needed_to_book_list = find_date_list()
 	classes_to_book = find_classes_to_book(date_needed_to_book_list)
 	book_classes(classes_to_book)
 
