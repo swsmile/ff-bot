@@ -8,11 +8,20 @@ import datetime
 import threading
 from enum import Enum, unique
 
+
+@unique
+class ClubEnum(Enum):
+	Clementi = 0  # Sun的value被设定为0
+
+
 INIT_TOKEN = "asdsd"
 MY_TOKEN = INIT_TOKEN
 WANT_REFRESH_TOKEN = False
 FREQUENCY_TO_CHECK_CLASS_AVAILABILITY = 1  # 1 second
 FREQUENCY_TO_BOOK = 0.3  # 1 second
+
+# Manual config
+TARGET_CLUB = ClubEnum.Clementi
 
 HEADERS = {
 	'Host': 'api-mobile.circuithq.com',
@@ -27,11 +36,6 @@ HEADERS = {
 }
 # Disable SSL warnings
 requests.packages.urllib3.disable_warnings()
-
-
-@unique
-class ClubEnum(Enum):
-	Clementi = 0  # Sun的value被设定为0
 
 
 class GymClass:
@@ -102,8 +106,8 @@ def refresh_token():
 
 	# Unknown error
 	if not response.ok:
-		print(response.status_code)
-		print(response.text)
+		logging.warning("Unknown error on refresh_token|status_code: %s, response: %s", response.status_code,
+						response.text)
 		return False
 
 	data = json.loads(response.text)
@@ -148,7 +152,7 @@ def parse_classes(classes_dict):
 		# 这样的不能订："name": "Personal Training",
 		# TODO Filter
 		# class_name.find("Gym Floor") != -1
-		if class_name.find("Personal Training") == -1 and club_id == get_club_id_by_club_enum(ClubEnum.Clementi):
+		if class_name.find("Personal Training") == -1 and club_id == get_club_id_by_club_enum(TARGET_CLUB):
 			gym_class = GymClass()
 			gym_class.class_id = class_id
 			gym_class.name = class_name
@@ -216,7 +220,8 @@ def book_class(c):
 					# 	c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
 					return False
 
-		logging.warning("Unknown error|status_code: %s, response: %s", response.status_code, response.text)
+		logging.warning("Unknown error on book_class|status_code: %s, response: %s", response.status_code,
+						response.text)
 		return False
 
 
@@ -234,8 +239,8 @@ def get_booked_classes():
 
 	# Unknown error
 	if not response.ok:
-		print(response.status_code)
-		print(response.text)
+		logging.warning("Unknown error on get_booked_classes|status_code: %s, response: %s", response.status_code,
+						response.text)
 		return booked_classes
 
 	data = json.loads(response.text)
@@ -266,7 +271,7 @@ def query_class_for_a_day(date_for_query):
 	params = (
 		('pageSize', '1000'),
 
-		('clubId', str(get_club_id_by_club_enum(ClubEnum.Clementi))),
+		('clubId', str(get_club_id_by_club_enum(TARGET_CLUB))),
 		('maxPrice', '150.0'),
 		('pageNumber', '1'),
 		('minPrice', '0.0'),
@@ -278,7 +283,7 @@ def query_class_for_a_day(date_for_query):
 
 	logging.info("got class info already, start_time_for_book_query: %s, end_time_for_book_query: %s, club: %s",
 				 start_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'),
-				 end_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'), ClubEnum.Clementi)
+				 end_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'), TARGET_CLUB)
 
 	while True:
 		response = send_http_get('https://api-mobile.circuithq.com/api/v2/class/search/', params)
@@ -290,22 +295,27 @@ def query_class_for_a_day(date_for_query):
 			if refresh_token():
 				continue
 
-		if response.status_code == 200 and len(data["data"]) > 1:
+		if response.status_code == 200:
+			if len(data["data"]) == 1:
+				logging.warning("no classed found| check parameters provided|")
+				return None
+
 			classes_dict = data["data"]
 			return parse_classes(classes_dict)
 		# time.sleep(FREQUENCY_TO_CHECK_CLASS_AVAILABILITY)
 
 		# Cannot continue, because of unknown error
-		print(response.status_code)
-		print(response.text)
-		break
+		logging.warning("Unknown error on query_class|status_code: %s, response: %s", response.status_code,
+						response.text)
+		return None
 
 
 def find_classes_to_book(date_needed_to_book_list):
 	classes_to_book = []
 	for d in date_needed_to_book_list:
 		classes_to_book_per_day = query_class_for_a_day(d)
-		classes_to_book.extend(classes_to_book_per_day)
+		if classes_to_book_per_day:
+			classes_to_book.extend(classes_to_book_per_day)
 	return classes_to_book
 
 
@@ -316,7 +326,7 @@ def book_classes(classes_to_book):
 
 
 def init():
-	logging.basicConfig(format='%(asctime)s|%(levelname)s|%(filename)s %(funcName)s %(lineno)s|%(message)s',
+	logging.basicConfig(format='%(asctime)s|%(levelname)s|%(filename)s:%(lineno)s [%(funcName)s] |%(message)s',
 						level=logging.INFO)
 
 
