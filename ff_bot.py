@@ -14,14 +14,15 @@ class ClubEnum(Enum):
 	Clementi = 0  # Sun的value被设定为0
 
 
-INIT_TOKEN = "asdsd"
+INIT_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOlwvXC9hcGktbW9iaWxlLmNpcmN1aXRocS5jb21cL2FwaVwvdjFcL2F1dGhcL3Rva2VuXC9yZWZyZXNoIiwiaWF0IjoxNTk2MzgwNTMzLCJleHAiOjE1OTgyNzY4MDMsIm5iZiI6MTU5NzA2NzIwMywianRpIjoiaFhIZk9rNGliOTE3Y2dxaiIsInN1YiI6OTAxNzYsInBydiI6IjIzYmQ1Yzg5NDlmNjAwYWRiMzllNzAxYzQwMDg3MmRiN2E1OTc2ZjcifQ.mVhyGxtuHPSqX_TfsF_dJ25yimEZ3pgh24OBALebxMg"
 MY_TOKEN = INIT_TOKEN
 WANT_REFRESH_TOKEN = False
 FREQUENCY_TO_CHECK_CLASS_AVAILABILITY = 1  # 1 second
-FREQUENCY_TO_BOOK = 0.3  # 1 second
+FREQUENCY_TO_BOOK = 1  # 1 second
 
 # Manual config
 TARGET_CLUB = ClubEnum.Clementi
+CLASS_ID_BLACKLIST = []
 
 HEADERS = {
 	'Host': 'api-mobile.circuithq.com',
@@ -321,8 +322,9 @@ def find_classes_to_book(date_needed_to_book_list):
 
 def book_classes(classes_to_book):
 	for c in classes_to_book:
-		t = threading.Thread(target=book_class, args=(c,))
-		t.start()
+		if c.class_id not in CLASS_ID_BLACKLIST:
+			t = threading.Thread(target=book_class, args=(c,))
+			t.start()
 
 
 def init():
