@@ -7,6 +7,8 @@ import datetime
 
 import threading
 from enum import Enum, unique
+import argparse
+import my_until
 
 
 @unique
@@ -17,8 +19,8 @@ class ClubEnum(Enum):
 class GymClass:
 	class_id = 0
 	name = ""
-	start_time = datetime.datetime.now()
-	end_time = datetime.datetime.now()
+	start_time = my_until.get_current_time()
+	end_time = my_until.get_current_time()
 	club = ClubEnum.Clementi
 	capacity = 0
 
@@ -31,49 +33,67 @@ class GymClass:
 
 
 class Mybot:
-	INIT_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOlwvXC9hcGktbW9iaWxlLmNpcmN1aXRocS5jb21cL2FwaVwvdjFcL2F1dGhcL3Rva2VuXC9yZWZyZXNoIiwiaWF0IjoxNTk2MzgwNTMzLCJleHAiOjE1OTgyNzY4MDMsIm5iZiI6MTU5NzA2NzIwMywianRpIjoiaFhIZk9rNGliOTE3Y2dxaiIsInN1YiI6OTAxNzYsInBydiI6IjIzYmQ1Yzg5NDlmNjAwYWRiMzllNzAxYzQwMDg3MmRiN2E1OTc2Zjcifx.mVhyGxtuHPSqX_TfsF_dJ25yimEZ3pgh24OBALebxMg"
-	MY_TOKEN = INIT_TOKEN
+	TOKEN = ""
 	WANT_REFRESH_TOKEN = False
-	FREQUENCY_TO_CHECK_CLASS_AVAILABILITY = 1  # 1 second
-	FREQUENCY_TO_BOOK = 1  # 1 second
+	# FREQUENCY_TO_CHECK_CLASS_AVAILABILITY = 1  # 1 second
+	FREQUENCY_TO_BOOK_DURING_ALMOST_BOOKABLE_PERIOD = 0.3  # 0.3s
+	FREQUENCY_TO_BOOK_BEFORE_ALMOST_BOOKABLE_PERIOD = 5  # 5s
+	# FREQUENCY_TO_BOOK_DURING_WARMUP_PERIOD = 2  # 2s
+	EARLIEST_BOOKABLE_HOUR = 46  # 2020-8-13 the earliest bookable time is 46 hours
 
-	# Manual config
-	USER_NAME = "swsmile1028@gmail.com"
-	PASSWORD = "x39wlguv"
+	USER_NAME = ""
+	PASSWORD = ""
 	TARGET_CLUB = ClubEnum.Clementi
 	CLASS_ID_BLACKLIST = []
 
-	def __init__(self):
-		logging.basicConfig(format='%(asctime)s|%(levelname)s|%(filename)s:%(lineno)s [%(funcName)s] |%(message)s',
-							level=logging.INFO)
-
-		self.HEADERS = {
+	def get_headers(self):
+		headers = {
 			'Host': 'api-mobile.circuithq.com',
 			'content-type': 'application/json',
 			'accept': '*/*',
-			'authorization': 'Bearer ' + self.MY_TOKEN,
+			'authorization': 'Bearer ' + self.TOKEN,
 			'user-country-code': 'sg',
 			'accept-language': 'en-CN;q=1.0, zh-Hans-CN;q=0.9',
 			'user-locale': 'cn',
 			'user-agent': 'Fitness First Asia/1.10 (com.EvolutionWellness.App.FitnessFirst; build:66; iOS 13.6.0) Alamofire/4.8.2',
 			'user-brand-code': 'ff',
 		}
-	# Disable SSL warnings
-	requests.packages.urllib3.disable_warnings()
+		return headers
+
+	def parse_account_passward(self):
+		self.PASSWORD = self.args.password
+		self.USER_NAME = self.args.account
+
+	def __init__(self):
+		logging.basicConfig(format='%(asctime)s|%(levelname)s|%(filename)s:%(lineno)s [%(funcName)s] |%(message)s',
+							level=logging.INFO)
+		# Disable SSL warnings
+		requests.packages.urllib3.disable_warnings()
+
+		# Parse parameters
+		parser = argparse.ArgumentParser(description='Get FF slot for u automatically.')
+		parser.add_argument('--account', "-u", action='store', dest='account', type=str, default="",
+							help="your account for FF App")
+		parser.add_argument('--password', '-p', action='store', dest='password', type=str, default="",
+							help="your password for FF App")
+		# TODO booking filters
+
+
+		self.args = parser.parse_args()
 
 	def send_http_get(self, url, params):
-		response = requests.get(url, headers=self.HEADERS, params=params,
+		response = requests.get(url, headers=self.get_headers(), params=params,
 								verify=False)
 		return response
 
 	def send_http_post(self, url, cookies=None, data=None):
-		response = requests.post(url, headers=self.HEADERS, cookies=cookies, data=data, verify=False)
+		response = requests.post(url, headers=self.get_headers(), cookies=cookies, data=data, verify=False)
 		return response
 
 	def find_date_list(self):
 		date_needed_to_book_list = []
 		booked_classes = self.get_booked_classes()
-		now = datetime.datetime.now()
+		now = my_until.get_current_time()
 
 		need_book_today = True
 		need_book_tomorrow = True
@@ -96,12 +116,11 @@ class Mybot:
 	def fail_due_to_invalid_token(self, code):
 		fail = code == 401
 		if fail:
-			logging.error("invali token provided|current token: %s", self.MY_TOKEN)
+			logging.warning("invali token provided|current token: %s", self.TOKEN)
 		return fail
 
 	def refresh_token(self):
 		if not self.WANT_REFRESH_TOKEN:
-			# TOKEN = INIT_TOKEN
 			return True
 
 		response = self.send_http_post('https://api-mobile.circuithq.com/api/v1/auth/token/refresh')
@@ -119,8 +138,8 @@ class Mybot:
 
 		data = json.loads(response.text)
 		token = data["data"]["token"]
-		TOKEN = token
-		print("We have a new token: " + token)
+		self.TOKEN = token
+		logging.info("We have a new token: %s", token)
 
 		return True
 
@@ -156,7 +175,8 @@ class Mybot:
 			# 这样的不能订："name": "Personal Training",
 			# TODO Filter
 			# class_name.find("Gym Floor") != -1
-			if class_name.find("Personal Training") == -1 and club_id == self.get_club_id_by_club_enum(self.TARGET_CLUB):
+			if class_name.find("Personal Training") == -1 and club_id == self.get_club_id_by_club_enum(
+					self.TARGET_CLUB):
 				gym_class = GymClass()
 				gym_class.class_id = class_id
 				gym_class.name = class_name
@@ -170,8 +190,9 @@ class Mybot:
 
 		return class_to_book
 
-	# Didn't find any available class
-	# print("Didn't find any available class")
+	"""
+	"""
+
 	def get_token_by_login(self):
 		logging.info("try to get a new token...")
 
@@ -181,12 +202,21 @@ class Mybot:
 		data_dict["password"] = self.PASSWORD
 
 		response = self.send_http_post("https://api-mobile.circuithq.com/api/v1/auth/login", data=json.dumps(data_dict))
-		response_data = json.loads(response.text)
+		response_dict = json.loads(response.text)
 		if response.status_code == 200:
-			if "data" in response_data and "token" in response_data["data"]:
-				self.MY_TOKEN = response_data["data"]["token"]
-				logging.info("got a new token!!! %s", self.MY_TOKEN)
+			if "data" in response_dict and "token" in response_dict["data"]:
+				self.TOKEN = response_dict["data"]["token"]
+				logging.info("got a new token!!! %s", self.TOKEN)
 				return True
+		elif response.status_code == 404:
+			if "error" in response_dict:
+				if "messages" in response_dict["error"]:
+					if len(response_dict["error"]["messages"]) > 0:
+						if response_dict["error"]["messages"][0]:
+							if response_dict["error"]["messages"][0].get("message",
+																		 "") == "auth_errors_invalid_credentials":
+								logging.warning("wrong account or password")
+								return False
 
 		# Cannot continue, because of unknown error
 		logging.warning("Unknown error on get_token_by_login|status_code: %s, response: %s", response.status_code,
@@ -194,7 +224,7 @@ class Mybot:
 		return False
 
 	def book_class(self, c):
-		# without this Cookie is ok
+		# Without this Cookie is ok
 		# cookies = {
 		# 	'ARRAffinity': '94172f5487d231c2d0c7ffe567b886259eb44ddbfd8f88adc109ab9b026ea441',
 		# }
@@ -206,7 +236,7 @@ class Mybot:
 										   data=data)
 			response_data = json.loads(response.text)
 			if response.status_code == 200:
-				print("we make it")
+				logging.info("we make it")
 				# TODO send to MM
 				booked_class = data["data"]
 				return True
@@ -217,7 +247,8 @@ class Mybot:
 					response_data["error"]["messages"]) > 0:
 					msg = response_data["error"]["messages"][0]["message"]
 
-					if msg == "booking_errors_too_late":
+					# 2020-08-12 found error msg is changed
+					if msg == "booking_errors_too_late_sg":
 						# logging.info(
 						# 	"we are too late to book or we have booked it, so give up, class_id: %s, start_time: %s, name: %s",
 						# 	c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
@@ -226,15 +257,28 @@ class Mybot:
 						logging.info(
 							"[retry] try to book (class_id: %s), but fail due to full capacity...|start_time: %s, name: %s",
 							c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
-						time.sleep(self.FREQUENCY_TO_BOOK)
+
+						time.sleep(Mybot.FREQUENCY_TO_BOOK_DURING_ALMOST_BOOKABLE_PERIOD)
 						continue
 					elif msg == "booking_errors_too_soon":
 						logging.info(
 							"[retry] try to book (class_id: %s), but fail due to be too early...|start_time: %s, name: %s",
 							c.class_id, c.start_time.strftime("%Y-%m-%d %H:%M:%S"), c.name)
 
-						# TODO
-						time.sleep(self.FREQUENCY_TO_BOOK)
+						now = my_until.get_current_time()
+						diff = c.start_time - now
+						if diff.hour == Mybot.EARLIEST_BOOKABLE_HOUR and diff.minute <= 5:
+							time.sleep(Mybot.FREQUENCY_TO_BOOK)
+						elif (diff.hour == Mybot.EARLIEST_BOOKABLE_HOUR and diff.minute > 5) or (
+								diff.hour > Mybot.EARLIEST_BOOKABLE_HOUR):
+							time.sleep(Mybot.FREQUENCY_TO_BOOK_BEFORE_ALMOST_BOOKABLE_PERIOD)
+						else:
+							logging.warning(
+								"Unknown error on book_class|status_code: %s, response: %s, c.start_time: %s, now: %s",
+								response.status_code,
+								response.text, c.start_time, now)
+							return False
+
 						continue
 					elif msg == "booking_errors_overlap":
 						# logging.info(
@@ -305,7 +349,7 @@ class Mybot:
 			('toDate', str(int(end_time_for_book_query.timestamp()))),
 		)
 
-		logging.info("got class info already, start_time_for_book_query: %s, end_time_for_book_query: %s, club: %s",
+		logging.info("query class info..., start_time_for_book_query: %s, end_time_for_book_query: %s, club: %s",
 					 start_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'),
 					 end_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'), self.TARGET_CLUB)
 
@@ -328,13 +372,21 @@ class Mybot:
 					return None
 
 				classes_dict = data["data"]
-				return self.parse_classes(classes_dict)
+
+				logging.info("got class info already:")
+				classes = self.parse_classes(classes_dict)
+				(logging.info("%s", c) for c in classes)
+				return classes
 			# time.sleep(FREQUENCY_TO_CHECK_CLASS_AVAILABILITY)
 
 			# Cannot continue, because of unknown error
 			logging.warning("Unknown error on query_class|status_code: %s, response: %s", response.status_code,
 							response.text)
 			return None
+
+	def find_classes_to_book_by_filter(self, start_time_to_book, end_time_to_book, club_id):
+		# TODO
+		pass
 
 	def find_classes_to_book(self, date_needed_to_book_list):
 		classes_to_book = []
@@ -350,11 +402,26 @@ class Mybot:
 				t = threading.Thread(target=self.book_class, args=(c,))
 				t.start()
 
+	def parse_booking_filters(self):
+		# TODO
+		pass
+
 	def Start(self):
-		date_needed_to_book_list = self.find_date_list()
-		classes_to_book = self.find_classes_to_book(date_needed_to_book_list)
+		self.parse_account_passward()
+
+		# Verify account and password
+		if not self.get_token_by_login():
+			return
+
+		self.parse_booking_filters()
+
+		# date_needed_to_book_list = self.find_date_list()
+		# classes_to_book = self.find_classes_to_book(date_needed_to_book_list)
+
+		classes_to_book = self.find_classes_to_book_by_filter()
 		self.book_classes(classes_to_book)
 
 
-b = Mybot()
-b.Start()
+if __name__ == "__main__":
+	b = Mybot()
+	b.Start()
