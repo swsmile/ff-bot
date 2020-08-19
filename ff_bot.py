@@ -232,6 +232,8 @@ class Mybot:
 		data = '{"class_id": ' + str(c.class_id) + '}'
 
 		while True:
+			# TODO check success set before booking
+
 			response = self.send_http_post('https://api-mobile.circuithq.com/api/v2/class/book', cookies=cookies,
 										   data=data)
 			response_data = json.loads(response.text)
@@ -239,6 +241,8 @@ class Mybot:
 				logging.info("we make it")
 				# TODO send to MM
 				booked_class = data["data"]
+
+				# TODO once done, put it into success set
 				return True
 
 			if response.status_code == 400:
