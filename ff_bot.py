@@ -61,8 +61,8 @@ class Mybot:
 		return headers
 
 	def parse_account_passward(self):
-		self.PASSWORD = self.args.password
-		self.USER_NAME = self.args.account
+		self.password = self.args.password
+		self.user_name = self.args.account
 
 	def __init__(self):
 		logging.basicConfig(format='%(asctime)s|%(levelname)s|%(filename)s:%(lineno)s [%(funcName)s] |%(message)s',
@@ -77,7 +77,12 @@ class Mybot:
 		parser.add_argument('--password', '-p', action='store', dest='password', type=str, default="",
 							help="your password for FF App")
 		# TODO booking filters
-
+		parser.add_argument('--start_time', '-s', action='store', dest='start_time', type=str, default="",
+							help="start_time of classes to query")
+		parser.add_argument('--end_time', '-e', action='store', dest='end_time', type=str, default="",
+							help="end_time of classes to query")
+		parser.add_argument('--club_name', '-c', action='store', dest='club_name', type=str, default="clementi",
+							help="club name to query")
 
 		self.args = parser.parse_args()
 
@@ -201,12 +206,13 @@ class Mybot:
 		data_dict["email"] = self.USER_NAME
 		data_dict["password"] = self.PASSWORD
 
+		logging.info("try to login: email: %s, password: %s", data_dict["email"], data_dict["password"])
 		response = self.send_http_post("https://api-mobile.circuithq.com/api/v1/auth/login", data=json.dumps(data_dict))
 		response_dict = json.loads(response.text)
 		if response.status_code == 200:
 			if "data" in response_dict and "token" in response_dict["data"]:
 				self.TOKEN = response_dict["data"]["token"]
-				logging.info("got a new token!!! %s", self.TOKEN)
+				logging.info("login succeeds and got a new token: %s", self.TOKEN)
 				return True
 		elif response.status_code == 404:
 			if "error" in response_dict:
@@ -226,7 +232,7 @@ class Mybot:
 	def book_class(self, c):
 		# Without this Cookie is ok
 		# cookies = {
-		# 	'ARRAffinity': '94172f5487d231c2d0c7ffe567b886259eb44ddbfd8f88adc109ab9b026ea441',
+		# 	'ARRAffinity': '...',
 		# }
 		cookies = {}
 		data = '{"class_id": ' + str(c.class_id) + '}'
@@ -240,7 +246,7 @@ class Mybot:
 			if response.status_code == 200:
 				logging.info("we make it")
 				# TODO send to MM
-				booked_class = data["data"]
+				# booked_class = response_data["data"]
 
 				# TODO once done, put it into success set
 				return True
@@ -407,17 +413,32 @@ class Mybot:
 				t.start()
 
 	def parse_booking_filters(self):
-		# TODO
-		pass
+		input_start_time_to_query = self.args.start_time
+		s = parse_input_time(input_start_time_to_query)
+		if not s:
+			return False
+		self.start_time_to_query = s
+
+		input_end_time_to_query = self.args.end_time
+		s = parse_input_time(input_end_time_to_query)
+		if not s:
+			return False
+		self.end_time_to_query = s
+
+		self.club_name_to_query = self.args.club_name
+
+	def parse_input(self):
+		self.parse_account_passward()
+		if not self.parse_booking_filters():
+			return False
 
 	def Start(self):
-		self.parse_account_passward()
+		if not self.parse_input():
+			return False
 
 		# Verify account and password
 		if not self.get_token_by_login():
 			return
-
-		self.parse_booking_filters()
 
 		# date_needed_to_book_list = self.find_date_list()
 		# classes_to_book = self.find_classes_to_book(date_needed_to_book_list)
