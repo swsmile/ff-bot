@@ -41,8 +41,8 @@ class Mybot:
 	# FREQUENCY_TO_BOOK_DURING_WARMUP_PERIOD = 2  # 2s
 	EARLIEST_BOOKABLE_HOUR = 46  # 2020-8-13 the earliest bookable time is 46 hours
 
-	USER_NAME = ""
-	PASSWORD = ""
+	# USER_NAME = ""
+	# PASSWORD = ""
 	TARGET_CLUB = ClubEnum.Clementi
 	CLASS_ID_BLACKLIST = []
 
@@ -203,8 +203,8 @@ class Mybot:
 
 		data_dict = {}
 		data_dict["captcha_token"] = "batman"
-		data_dict["email"] = self.USER_NAME
-		data_dict["password"] = self.PASSWORD
+		data_dict["email"] = self.user_name
+		data_dict["password"] = self.password
 
 		logging.info("try to login: email: %s, password: %s", data_dict["email"], data_dict["password"])
 		response = self.send_http_post("https://api-mobile.circuithq.com/api/v1/auth/login", data=json.dumps(data_dict))
@@ -429,8 +429,9 @@ class Mybot:
 
 	def parse_input(self):
 		self.parse_account_passward()
-		if not self.parse_booking_filters():
-			return False
+		# if not self.parse_booking_filters():
+		# 	return False
+		return True
 
 	def Start(self):
 		if not self.parse_input():
