@@ -181,7 +181,7 @@ def book_class(c):
 	data = '{"class_id": ' + str(c.class_id) + '}'
 
 	while True:
-		response = send_http_post('https://api-mobile.circuithq.com/api/v2/class/book', cookies=cookies,
+		response = send_http_post('https://api-mobile.circuithq.com/api/v3/class/book', cookies=cookies,
 								  data=data)
 		response_data = json.loads(response.text)
 		if response.status_code == 200:
@@ -233,7 +233,7 @@ def get_booked_classes():
 		('page', '1'),
 		('pageSize', '25'),
 	)
-	response = send_http_get('https://api-mobile.circuithq.com/api/v2/booking/upcoming', params)
+	response = send_http_get('https://api-mobile.circuithq.com/api/v3/booking/upcoming', params)
 	if fail_due_to_invalid_token(response.status_code):
 		logging.error("invali token provided|current token: %s", MY_TOKEN)
 		return booked_classes
@@ -287,7 +287,7 @@ def query_class_for_a_day(date_for_query):
 				 end_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'), TARGET_CLUB)
 
 	while True:
-		response = send_http_get('https://api-mobile.circuithq.com/api/v2/class/search/', params)
+		response = send_http_get('https://api-mobile.circuithq.com/api/v3/class/search/', params)
 		data = json.loads(response.text)
 
 		if fail_due_to_invalid_token(response.status_code):  # We need to refresh token
