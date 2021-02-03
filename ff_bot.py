@@ -128,7 +128,7 @@ class Mybot:
 		if not self.WANT_REFRESH_TOKEN:
 			return True
 
-		response = self.send_http_post('https://api-mobile.circuithq.com/api/v1/auth/token/refresh')
+		response = self.send_http_post('https://api-mobile.circuithq.com/api/v3/auth/token/refresh')
 		if self.fail_due_to_invalid_token(response.status_code):
 			if self.get_token_by_login():
 				return True
@@ -207,7 +207,7 @@ class Mybot:
 		data_dict["password"] = self.password
 
 		logging.info("try to login: email: %s, password: %s", data_dict["email"], data_dict["password"])
-		response = self.send_http_post("https://api-mobile.circuithq.com/api/v1/auth/login", data=json.dumps(data_dict))
+		response = self.send_http_post("https://api-mobile.circuithq.com/api/v3/auth/login", data=json.dumps(data_dict))
 		response_dict = json.loads(response.text)
 		if response.status_code == 200:
 			if "data" in response_dict and "token" in response_dict["data"]:
@@ -240,7 +240,7 @@ class Mybot:
 		while True:
 			# TODO check success set before booking
 
-			response = self.send_http_post('https://api-mobile.circuithq.com/api/v2/class/book', cookies=cookies,
+			response = self.send_http_post('https://api-mobile.circuithq.com/api/v3/class/book', cookies=cookies,
 										   data=data)
 			response_data = json.loads(response.text)
 			if response.status_code == 200:
@@ -308,7 +308,7 @@ class Mybot:
 				('page', '1'),
 				('pageSize', '25'),
 			)
-			response = self.send_http_get('https://api-mobile.circuithq.com/api/v2/booking/upcoming', params)
+			response = self.send_http_get('https://api-mobile.circuithq.com/api/v3/booking/upcoming', params)
 			if self.fail_due_to_invalid_token(response.status_code):
 				if self.get_token_by_login():
 					continue
@@ -364,7 +364,7 @@ class Mybot:
 					 end_time_for_book_query.strftime('%Y-%m-%d %H:%M:%S'), self.TARGET_CLUB)
 
 		while True:
-			response = self.send_http_get('https://api-mobile.circuithq.com/api/v2/class/search/', params)
+			response = self.send_http_get('https://api-mobile.circuithq.com/api/v3/class/search/', params)
 			data = json.loads(response.text)
 
 			if self.fail_due_to_invalid_token(response.status_code):  # We need to refresh token
